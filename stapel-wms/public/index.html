@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en-ZA">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Stapel WMS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<div id="auth" class="auth" hidden>
+  <div class="authcard">
+    <div class="brand"><b>Stap<i>el</i></b><span>Warehouse management</span></div>
+    <div class="seg"><button data-auth="login" aria-pressed="true">Sign in</button><button data-auth="register" aria-pressed="false">Create a company</button></div>
+    <form id="f-login" class="stack">
+      <label>Email<input id="l-email" type="email" autocomplete="username" required></label>
+      <label>Password<input id="l-pass" type="password" autocomplete="current-password" required></label>
+      <button class="btn pri">Sign in</button>
+    </form>
+    <form id="f-register" class="stack" hidden>
+      <label>Company name<input id="r-company" maxlength="120" required></label>
+      <label>Your name<input id="r-name" maxlength="120" required></label>
+      <label>Email<input id="r-email" type="email" autocomplete="username" required></label>
+      <label>Password (8 characters or more)<input id="r-pass" type="password" autocomplete="new-password" minlength="8" required></label>
+      <label class="check"><input id="r-ex" type="checkbox" checked> Start with an example warehouse (invented stock, customers and orders)</label>
+      <button class="btn pri">Create company</button>
+    </form>
+    <p id="auth-err" class="err" role="alert"></p>
+  </div>
+</div>
+
+<div id="app" class="app" hidden>
+  <header class="bar">
+    <div class="brand"><b>Stap<i>el</i></b><span id="wh-name"></span></div>
+    <nav class="nav" aria-label="Sections">
+      <button data-view="floor" aria-current="page">Floor</button>
+      <button data-view="reports" data-min="manager">Reports</button>
+      <button data-view="history">History</button>
+      <button data-view="partners" data-min="manager">Customers &amp; suppliers</button>
+      <button data-view="settings">Settings</button>
+    </nav>
+    <div class="who"><span id="who"></span><button class="link" data-act="logout">Sign out</button></div>
+  </header>
+
+  <div id="v-floor" class="main">
+    <section class="floor" aria-label="3D warehouse floor">
+      <div class="stats" id="stats"></div>
+      <div class="stage">
+        <canvas id="gl"></canvas>
+        <div class="nogl" id="nogl" hidden>The 3D floor needs WebGL, which this browser has switched off. Stock and orders still work in the panel.</div>
+        <div class="ovl tl"><div class="seg"><button id="m-over" aria-pressed="true">Overview</button><button id="m-walk" aria-pressed="false">Walk the floor</button></div></div>
+        <div class="ovl bl"><span class="hint" id="hint"></span></div>
+        <div class="dpad" id="dpad" hidden><button class="u" data-k="w" aria-label="Forward">&#9650;</button><button class="l" data-k="a" aria-label="Left">&#9664;</button><button class="d" data-k="s" aria-label="Back">&#9660;</button><button class="r" data-k="d" aria-label="Right">&#9654;</button></div>
+      </div>
+    </section>
+    <aside class="panel">
+      <form id="f-scan" class="scan"><label>Scan or type a bin, barcode, SKU or order<input id="scan" autocomplete="off" placeholder="e.g. A-01-1 or SO-1001"></label><button class="btn">Find</button></form>
+      <div class="tabs" role="tablist"><button role="tab" data-tab="stock" aria-selected="true">Stock</button><button role="tab" data-tab="orders" aria-selected="false">Orders</button><button role="tab" data-tab="bin" aria-selected="false">Bin</button></div>
+      <div class="pane" id="p-stock">
+        <div id="stock-empty" class="empty" hidden><h2>No products yet</h2><p class="muted">Add your first product below, then click an empty pallet position on the floor to put stock in it.</p></div>
+        <label>Find a product<input id="q" type="search" placeholder="Name, SKU or barcode"></label>
+        <div class="tblwrap"><table><thead><tr><th>Product</th><th class="num">On hand</th><th class="num">Value</th></tr></thead><tbody id="stock-rows"></tbody></table></div>
+        <details data-min="manager"><summary>Add a product</summary><div>
+          <div class="grid2"><label>SKU code<input id="s-sku" maxlength="20" placeholder="e.g. FL-5"></label><label>Category<input id="s-cat" maxlength="40" list="cats" placeholder="e.g. Dry goods"></label></div>
+          <datalist id="cats"></datalist>
+          <label>Name<input id="s-name" maxlength="120" placeholder="e.g. Cake flour 5 kg"></label>
+          <label>Barcode (optional; the SKU is used if blank)<input id="s-barcode" maxlength="48"></label>
+          <div class="grid2"><label>Cost (R, excl. VAT)<input id="s-cost" type="number" min="0" step="0.01"></label><label>Selling price (R, excl. VAT)<input id="s-price" type="number" min="0" step="0.01"></label></div>
+          <div class="row"><label>Reorder below (units)<input id="s-reorder" type="number" min="0" step="1" value="40"></label><button class="btn pri" data-act="addproduct">Add product</button></div>
+        </div></details>
+      </div>
+      <div class="pane" id="p-orders" hidden>
+        <div class="seg" style="align-self:flex-start"><button data-of="out" aria-pressed="true">Outbound</button><button data-of="in" aria-pressed="false">Inbound</button></div>
+        <div id="order-list" class="stack"></div>
+        <details data-min="manager"><summary>New order</summary><div>
+          <label>Type<select id="f-type"><option value="out">Outbound: sales order to a customer</option><option value="in">Inbound: purchase order from a supplier</option></select></label>
+          <label><span id="f-partner-label">Customer</span><select id="f-partner"></select></label>
+          <label>Courier<select id="f-courier"><option>The Courier Guy</option><option>RAM</option><option>Aramex</option><option>DSV</option><option>Own truck</option><option>Customer collects</option><option>Supplier delivery</option></select></label>
+          <label>Notes (printed on the invoice)<input id="f-notes" maxlength="500"></label>
+          <div class="row"><label>Product<select id="f-product"></select></label><label style="flex:0 1 90px">Qty<input id="f-qty" type="number" min="1" step="1" value="12"></label><button class="btn" data-act="addline">Add line</button></div>
+          <div id="draft"></div>
+          <button class="btn pri" data-act="createorder" style="align-self:flex-start">Create order</button>
+        </div></details>
+      </div>
+      <div class="pane" id="p-bin" hidden></div>
+    </aside>
+  </div>
+
+  <main id="v-reports" class="page" hidden></main>
+  <main id="v-history" class="page" hidden></main>
+  <main id="v-partners" class="page" hidden></main>
+  <main id="v-settings" class="page" hidden></main>
+</div>
+<div id="toast" role="status" hidden></div>
+<script src="/vendor/three.min.js"></script>
+<script src="/floor.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

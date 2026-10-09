@@ -1,0 +1,23 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: stapel
+      POSTGRES_PASSWORD: stapel
+      POSTGRES_DB: stapel
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stapel"]
+      interval: 3s
+      retries: 20
+  app:
+    build: .
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      DATABASE_URL: postgres://stapel:stapel@db:5432/stapel
+      JWT_SECRET: ${JWT_SECRET:-dev-only-change-me}
+      NODE_ENV: development
+    ports: ["3000:3000"]
+volumes:
+  pgdata:
