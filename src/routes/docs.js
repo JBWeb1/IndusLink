@@ -48,7 +48,7 @@ router.get('/labels/bins.pdf', h(async (req, res) => {
 }));
 router.get('/labels/products.pdf', h(async (req, res) => {
   const r = await q('SELECT sku, name, barcode FROM products WHERE company_id=$1 AND active ORDER BY sku', [req.user.company_id]);
-  await pdf.labels(res, 'product-labels.pdf', r.rows.map(p => ({ code: (p.barcode || p.sku).replace(/[^\x20-\x7e]/g, ''), title: p.sku, sub: p.name })));
+  await pdf.labels(res, 'product-labels.pdf', r.rows.map(p => ({ code: p.barcode.replace(/[^\x20-\x7e]/g, '').trim() || p.sku, title: p.sku, sub: p.name })));
 }));
 
 module.exports = router;

@@ -22,7 +22,7 @@ router.post('/register', limiter, h(async (req, res) => {
     await D.createBins(c, wh);
     if (b.examples) await seedExamples(c, { companyId: co.id, userId: u.id }, wh);
     return u;
-  });
+  }).catch(e => { if (e.code === '23505') throw new HttpError(409, 'That email already has an account. Sign in instead.'); throw e; });
   signIn(res, user);
   res.status(201).json({ ok: true });
 }));

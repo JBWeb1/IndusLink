@@ -125,6 +125,26 @@ async function receiveOrder(c, who, id) {
   return allocs.length;
 }
 
+/** Cancel an order that has not left the building. A picked order's stock goes back to the bins it came from,
+    or to other bins if those have since been filled. */
+async function cancelOrder(c, who, id) {
+  const o = await lockOrder(c, who.companyId, id);
+  if (!['new', 'expected', 'picked'].includes(o.status)) throw new HttpError(409, `${o.ref} has already been ${o.status} and cannot be cancelled.`);
+  if (o.status === 'picked') {
+    const wh = await getWarehouse(c, who.companyId), bins = await lockBins(c, wh.id), cap = wh.bin_capacity, rest = [];
+    for (const a of (await c.query('SELECT * FROM order_allocations WHERE order_id=$1 ORDER BY id', [o.id])).rows) {
+      const b = bins.find(x => x.code === a.bin_code);
+      const t = b && (!b.qty || b.product_id === a.product_id) ? Math.min(a.qty, cap - b.qty) : 0;
+      if (t > 0) await applyBin(c, who, b, b.qty + t, a.product_id, 'unpick', o.id, 'Order cancelled');
+      if (a.qty > t) rest.push({ product_id: a.product_id, qty: a.qty - t });
+    }
+    const { allocs, short } = planPut(rest, bins, cap);
+    if (short.length) throw new HttpError(409, `Not enough space to put the stock back: no room for ${await describeShort(c, short)}.`);
+    for (const a of allocs) await applyBin(c, who, a.bin, a.bin.qty + a.qty, a.product_id, 'unpick', o.id, 'Order cancelled');
+  }
+  await c.query("UPDATE orders SET status='cancelled' WHERE id=$1", [o.id]);
+}
+
 /** VAT is only charged when the company has a VAT number: a business that is not a registered vendor may not charge it. */
 async function createOrder(c, who, { type, partnerId, courier, notes, lines }) {
   const partner = (await c.query('SELECT * FROM partners WHERE id=$1 AND company_id=$2', [partnerId, who.companyId])).rows[0];
@@ -147,4 +167,4 @@ async function createOrder(c, who, { type, partnerId, courier, notes, lines }) {
   return o;
 }
 
-module.exports = { binCode, createBins, getWarehouse, lockBins, applyBin, planPick, planPut, pickOrder, dispatchOrder, receiveOrder, createOrder };
+module.exports = { binCode, createBins, getWarehouse, lockBins, applyBin, planPick, planPut, pickOrder, dispatchOrder, receiveOrder, cancelOrder, createOrder };

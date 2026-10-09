@@ -139,8 +139,7 @@ router.post('/orders/:id/pick', h(async (req, res) => { res.json({ bins: await t
 router.post('/orders/:id/dispatch', h(async (req, res) => { res.json({ invoiceNo: await tx(c => D.dispatchOrder(c, req.who, id(req.params.id), str(req.body.waybill, 60, 'Waybill', false))) }); }));
 router.post('/orders/:id/receive', h(async (req, res) => { res.json({ bins: await tx(c => D.receiveOrder(c, req.who, id(req.params.id))) }); }));
 router.post('/orders/:id/cancel', need('manager'), h(async (req, res) => {
-  const r = await q("UPDATE orders SET status='cancelled' WHERE id=$1 AND company_id=$2 AND status IN ('new','expected') RETURNING id", [id(req.params.id), req.user.company_id]);
-  if (!r.rows[0]) throw new HttpError(409, 'Only orders that have not been picked or received can be cancelled.');
+  await tx(c => D.cancelOrder(c, req.who, id(req.params.id)));
   res.json({ ok: true });
 }));
 
@@ -168,12 +167,11 @@ router.post('/users', need('admin'), h(async (req, res) => {
 router.patch('/users/:id', need('admin'), h(async (req, res) => {
   const uid = id(req.params.id), b = req.body, role = oneOf(b.role, ['admin', 'manager', 'picker'], 'Role'), active = b.active !== false;
   if (uid === req.user.id && (role !== 'admin' || !active)) throw new HttpError(400, 'You cannot remove your own admin access.');
-  const r = await q('UPDATE users SET role=$3, active=$4 WHERE id=$1 AND company_id=$2 RETURNING id', [uid, req.user.company_id, role, active]);
+  // Check everything before changing anything, so a bad password does not half-apply the update.
+  if (b.password !== undefined && b.password !== '' && (typeof b.password !== 'string' || b.password.length < 8 || b.password.length > 200)) throw new HttpError(400, 'Password must be at least 8 characters.');
+  const hash = b.password ? await bcrypt.hash(b.password, 11) : null;
+  const r = await q('UPDATE users SET role=$3, active=$4, password_hash=COALESCE($5, password_hash) WHERE id=$1 AND company_id=$2 RETURNING id', [uid, req.user.company_id, role, active, hash]);
   if (!r.rows[0]) throw new HttpError(404, 'User not found.');
-  if (b.password) {
-    if (typeof b.password !== 'string' || b.password.length < 8) throw new HttpError(400, 'Password must be at least 8 characters.');
-    await q('UPDATE users SET password_hash=$2 WHERE id=$1', [uid, await bcrypt.hash(b.password, 11)]);
-  }
   res.json({ ok: true });
 }));
 

@@ -7,7 +7,8 @@ const RANK = { picker: 1, manager: 2, admin: 3 };
 
 let S = null, has3d = false;
 const P = new Map(), B = new Map(), PT = new Map(); let CATS = [];
-const ui = { view: 'floor', tab: 'stock', q: '', selBin: null, selProd: null, selOrder: null, of: 'out', draft: [], err: {}, editPartner: null, histProd: '' };
+const fresh = () => ({ view: 'floor', tab: 'stock', q: '', selBin: null, selProd: null, selOrder: null, of: 'out', draft: [], err: {}, editPartner: null, histProd: '' });
+let ui = fresh();
 const can = role => RANK[S.user.role] >= RANK[role];
 
 /* ---------- api ---------- */
@@ -34,6 +35,8 @@ const bin = code => { const b = B.get(code); return b && b.qty > 0 ? b : null; }
 function totals() { const t = new Map(); for (const b of S.bins) { if (!b.qty) continue; if (!t.has(b.productId)) t.set(b.productId, { qty: 0, bins: [] }); const x = t.get(b.productId); x.qty += b.qty; x.bins.push(b.code); } return t; }
 const pname = id => (P.get(id) || {}).name || 'Unknown product';
 const orderExcl = o => o.lines.reduce((s, l) => s + l.qty * l.unitCents, 0);
+/** Same sum as the invoice PDF: VAT rounded to the cent, then added. */
+const orderIncl = o => { const ex = orderExcl(o); return ex + Math.round(ex * o.vatRate / 100); };
 function hintBins() {
   if (ui.tab === 'orders' && ui.selOrder) {
     const o = S.orders.find(x => x.id === ui.selOrder);
@@ -88,6 +91,7 @@ function renderOrders() {
     const st = STAT[o.status], pt = PT.get(o.partnerId) || {}, excl = orderExcl(o), doc = (n, label) => `<a class="link" target="_blank" rel="noopener" href="/api/orders/${o.id}/${n}.pdf">${label}</a>`;
     const where = o.allocs.length ? (o.type === 'out' ? 'Picked from: ' : 'Put away in: ') + o.allocs.map(a => `${a.bin} ×${a.qty}`).join(', ') : '';
     const docs = o.type === 'out' && o.status !== 'cancelled' ? [doc('pick-slip', 'Pick slip'), ...(o.status !== 'new' ? [doc('delivery-note', 'Delivery note')] : []), ...(o.invoiceNo ? [doc('invoice', 'Invoice ' + esc(o.invoiceNo))] : [])] : [];
+    const cancellable = can('manager') && ['new', 'expected', 'picked'].includes(o.status);
     let action = '';
     if (o.status === 'new') action = `<button class="btn pri" data-act="pick" data-id="${o.id}">Pick stock</button>`;
     else if (o.status === 'picked') action = `<label style="flex:1 1 120px">Waybill no (optional)<input id="wb-${o.id}" maxlength="60"></label><button class="btn pri" data-act="dispatch" data-id="${o.id}">Dispatch</button>`;
@@ -96,8 +100,8 @@ function renderOrders() {
       <p><strong>${esc(pt.name)}</strong>${pt.city ? ' · ' + esc(pt.city) : ''}</p><p class="muted">${esc(o.courier || 'No courier set')}${o.waybill ? ' · waybill ' + esc(o.waybill) : ''} · ${when(o.createdAt)}</p>
       <ul>${o.lines.map(l => `<li>${NUM.format(l.qty)} × ${esc(pname(l.productId))} <span class="code muted">${esc((P.get(l.productId) || {}).sku)}</span></li>`).join('')}</ul>
       ${where ? `<p class="muted code">${esc(where)}</p>` : ''}${docs.length ? `<p class="docs">${docs.join('')}</p>` : ''}${ui.err[o.id] ? `<p class="err">${esc(ui.err[o.id])}</p>` : ''}
-      <p>${o.type === 'out' ? `${ZAR(Math.round(excl * (1 + o.vatRate / 100)))} <span class="muted">${o.vatRate ? `incl. ${o.vatRate}% VAT` : 'no VAT charged'}</span>` : `${ZAR(excl)} <span class="muted">cost excl. VAT</span>`}</p>
-      ${action || (can('manager') && ['new', 'expected'].includes(o.status)) ? `<footer class="row">${action}${can('manager') && ['new', 'expected'].includes(o.status) ? `<button class="btn" data-act="cancel" data-id="${o.id}">Cancel order</button>` : ''}</footer>` : ''}</article>`;
+      <p>${o.type === 'out' ? `${ZAR(orderIncl(o))} <span class="muted">${o.vatRate ? `incl. ${o.vatRate}% VAT` : 'no VAT charged'}</span>` : `${ZAR(excl)} <span class="muted">cost excl. VAT</span>`}</p>
+      ${action || cancellable ? `<footer class="row">${action}${cancellable ? `<button class="btn" data-act="cancel" data-id="${o.id}">Cancel order</button>` : ''}</footer>` : ''}</article>`;
   }).join('') || `<p class="muted">No ${ui.of === 'out' ? 'outbound' : 'inbound'} orders yet.${can('manager') ? ' Create one below.' : ''}</p>`);
   $('#draft').innerHTML = ui.draft.length ? `<div class="chips">${ui.draft.map((l, i) => `<button class="chip" data-act="rmline" data-i="${i}" title="Remove line">${l.qty} × ${esc(pname(l.productId))} ✕</button>`).join('')}</div>` : '<p class="muted">Add at least one line.</p>';
 }
@@ -239,7 +243,7 @@ const orderAct = (id, verb, body, done) => async () => {
   try { const r = await api('POST', `/orders/${id}/${verb}`, body); await load(); toast(done(r)); } catch (e) { ui.err[id] = e.message; renderOrders(); update3d(); }
 };
 const ACT = {
-  logout: async () => { try { await api('POST', '/auth/logout', {}); } catch (e) { /* ignore */ } S = null; showAuth(); },
+  logout: async () => { try { await api('POST', '/auth/logout', {}); } catch (e) { /* ignore */ } S = null; ui = fresh(); selSig = ''; $('#q').value = ''; showAuth(); },
   product: d => { ui.selProd = ui.selProd === +d.id ? null : +d.id; renderStock(); update3d(); },
   bin: d => selectBin(d.bin),
   order: d => { ui.selOrder = ui.selOrder === +d.id ? null : +d.id; renderOrders(); update3d(); },
@@ -247,7 +251,11 @@ const ACT = {
   pick: d => orderAct(+d.id, 'pick', {}, r => `Picked from ${r.bins} bin${r.bins === 1 ? '' : 's'}`)(),
   dispatch: d => orderAct(+d.id, 'dispatch', { waybill: val('wb-' + d.id) }, r => `Dispatched. Invoice ${r.invoiceNo} is ready to print.`)(),
   receive: d => orderAct(+d.id, 'receive', {}, r => `Received into ${r.bins} bin${r.bins === 1 ? '' : 's'}`)(),
-  cancel: d => run(() => api('POST', `/orders/${d.id}/cancel`, {}), 'Order cancelled'),
+  cancel: d => {
+    const o = S.orders.find(x => x.id === +d.id); if (!o) return;
+    if (!confirm(o.status === 'picked' ? `Cancel ${o.ref}? Its picked stock goes back into the bins.` : `Cancel ${o.ref}?`)) return;
+    return run(() => api('POST', `/orders/${d.id}/cancel`, {}), o.status === 'picked' ? `${o.ref} cancelled. Stock is back in the bins.` : `${o.ref} cancelled`);
+  },
   addline: () => { const productId = +val('f-product'), qty = Math.round(+val('f-qty')); if (!productId || !(qty > 0)) return toast('Choose a product and a quantity above zero.'); ui.draft.push({ productId, qty }); renderOrders(); },
   rmline: d => { ui.draft.splice(+d.i, 1); renderOrders(); },
   createorder: async () => {
@@ -278,7 +286,7 @@ function authMode(m) { $$('[data-auth]').forEach(b => b.setAttribute('aria-press
 async function enter() {
   await load(); $('#auth').hidden = true; $('#app').hidden = false;
   if (!enter.once) { enter.once = true; has3d = FLOOR.init($('#gl'), { onPick: selectBin, hintEl: $('#hint'), dpad: $('#dpad') }); $('#nogl').hidden = has3d; }
-  showView('floor'); render();
+  showView('floor'); showTab(ui.tab); render();
 }
 function bind() {
   document.addEventListener('click', e => {

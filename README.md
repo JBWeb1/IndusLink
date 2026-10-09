@@ -2,6 +2,16 @@
 
 Warehouse management for South African distribution businesses. A walkable 3D warehouse floor on top of a real stock system: multi-company logins, picking, dispatch, receiving, VAT invoices, barcode labels, movement history and reports. Amounts are in rand; VAT defaults to 15%.
 
+![The 3D warehouse floor with stock, orders and the scan box](docs/screenshots/floor.png)
+
+| Walk the floor | Orders | Reports |
+| --- | --- | --- |
+| ![Walk mode](docs/screenshots/walk.png) | ![Orders panel](docs/screenshots/orders.png) | ![Reports](docs/screenshots/reports.png) |
+
+| Tax invoice (PDF) | Phone |
+| --- | --- |
+| ![Tax invoice](docs/screenshots/tax-invoice.png) | ![Phone layout](docs/screenshots/phone.png) |
+
 **Stack:** Node.js + Express, PostgreSQL, vanilla JavaScript front end with three.js (no build step).
 
 ## Run it
@@ -41,7 +51,7 @@ Runs an end-to-end check against a real database: register, company isolation, p
 | Roles | **Admin**: everything, including people, company details and layout. **Manager**: products, orders, customers and suppliers, reports. **Picker**: pick, dispatch, receive, count, move. |
 | 3D floor | Racks are built from the warehouse layout. Overview or walk mode, click a pallet position to open its bin. Selecting a product or order highlights its bins. |
 | Stock | Products with cost, selling price, reorder level and barcode. Bin counts, moves and put-away. Bin capacity is enforced. |
-| Outbound | Sales order, pick (lowest levels first; refuses if stock is short), dispatch with waybill number. Dispatch issues the next invoice number. |
+| Outbound | Sales order, pick (lowest levels first; refuses if stock is short), dispatch with waybill number. Dispatch issues the next invoice number. An order can be cancelled until it is dispatched; cancelling a picked order puts its stock back in the bins it came from. |
 | Inbound | Purchase order, receive and put away (tops up bins of the same product, then uses empty bins). |
 | Documents | Pick slip, delivery note and invoice as PDFs. Bin and product barcode labels (Code 128, 24 per A4 page). |
 | Scanning | The scan box accepts a bin code, product barcode, SKU or order number. USB and Bluetooth scanners work as keyboards. |
@@ -96,5 +106,5 @@ Any host that runs Node and offers PostgreSQL works (Render, Railway, Fly.io, a 
 - Several warehouses per company. The schema allows it; the screens use the first one.
 - Camera barcode scanning on phones. Hardware scanners work today.
 - Courier bookings and tracking. Courier names are a plain list.
-- Editing an order after it is created. Cancel it and create a new one.
+- Editing an order after it is created. Cancel it (before dispatch) and create a new one.
 - Batch numbers, expiry dates and serial numbers.

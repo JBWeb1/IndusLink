@@ -53,6 +53,16 @@ const { app, migrate, pool } = require('../src/server');
     assert.equal(onHand((await a('GET', '/api/state')).body), b4);
     assert.equal((await a('POST', `/api/orders/${big}/cancel`, {})).status, 200);
 
+    // a picked order can be cancelled, and its stock goes back on the shelves
+    r = await a('POST', '/api/orders', { type: 'out', partnerId: cust.id, lines: [{ productId: prod.id, qty: 7 }] });
+    const undo = r.body.id; assert.equal((await a('POST', `/api/orders/${undo}/pick`, {})).status, 200);
+    assert.equal(onHand((await a('GET', '/api/state')).body), b4 - 7);
+    r = await a('POST', `/api/orders/${undo}/cancel`, {}); assert.equal(r.status, 200, JSON.stringify(r.body));
+    s = (await a('GET', '/api/state')).body; assert.equal(onHand(s), b4, 'cancelling a picked order returns its stock');
+    assert.equal(s.orders.find(o => o.id === undo).status, 'cancelled');
+    assert.ok((await a('GET', '/api/movements')).body.some(m => m.reason === 'unpick' && m.ref));
+    assert.equal((await a('POST', `/api/orders/${oid}/cancel`, {})).status, 409, 'a dispatched order cannot be cancelled');
+
     // receive a purchase order
     const po = s.orders.find(o => o.type === 'in' && o.status === 'expected'), poUnits = po.lines.reduce((t, l) => t + l.qty, 0);
     assert.equal((await a('POST', `/api/orders/${po.id}/receive`, {})).status, 200);
@@ -81,6 +91,9 @@ const { app, migrate, pool } = require('../src/server');
     assert.equal((await p('GET', '/api/users')).status, 403);
     assert.equal((await p('GET', '/api/reports/summary')).status, 403);
     assert.equal((await p('POST', '/api/auth/login', { email: `p${stamp}@test.co.za`, password: 'wrong-password' })).status, 401);
+    // a rejected password must not half-apply the other changes
+    assert.equal((await a('PATCH', `/api/users/${r.body.id}`, { role: 'admin', active: true, password: 'short' })).status, 400);
+    assert.equal((await a('GET', '/api/users')).body.find(u => u.id === r.body.id).role, 'picker', 'role unchanged after a rejected update');
     await a('PATCH', `/api/users/${r.body.id}`, { role: 'picker', active: false });
     assert.equal((await p('GET', '/api/state')).status, 401, 'deactivated user is locked out at once');
 
@@ -88,6 +101,13 @@ const { app, migrate, pool } = require('../src/server');
     r = await a('GET', '/api/reports/summary'); assert.equal(r.status, 200, JSON.stringify(r.body)); assert.equal(r.body.daily.length, 14); assert.ok(r.body.byCategory.length > 0);
     for (const u of ['/api/labels/bins.pdf', '/api/labels/products.pdf']) { r = await a('GET', u); assert.equal(r.status, 200, u); assert.ok(r.body.length > 3000); }
     for (const u of ['/api/reports/valuation.csv', '/api/reports/movements.csv']) { r = await a('GET', u); assert.equal(r.status, 200, u); }
+    // a product whose barcode has no printable characters still gets a label
+    r = await a('POST', '/api/products', { sku: 'UNI-1', name: 'Unicode barcode', barcode: 'é€' }); assert.equal(r.status, 201, JSON.stringify(r.body));
+    r = await a('GET', '/api/labels/products.pdf'); assert.equal(r.status, 200, 'labels with an unprintable barcode');
+    // two sign-ups with the same email at once: one wins, the other is told why
+    const em = `race${stamp}@test.co.za`, reg = () => mk()('POST', '/api/auth/register', { company: 'Race', name: 'R', email: em, password: 'password123' });
+    const codes = (await Promise.all([reg(), reg(), reg()])).map(x => x.status).sort();
+    assert.deepEqual(codes, [201, 409, 409], 'duplicate sign-up gives 409, not 500: ' + codes);
     // form posts are refused
     const f = await fetch(base + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'email=a' }); assert.equal(f.status, 415);
     console.log('All smoke checks passed.');
