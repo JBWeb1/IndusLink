@@ -1,0 +1,14 @@
+{
+  "title": "Nexus Accounting explainer",
+  "voice": "bf_emma",
+  "scenes": [
+    { "id": "hook", "text": "It's ten at night. Your invoices are in one place, your receipts are in another, and VAT is due on Friday." },
+    { "id": "logo", "text": "Meet Nexus Accounting. All of your business finances, connected in one place." },
+    { "id": "invoice", "text": "Create a professional invoice in under a minute. Send it by email or WhatsApp, and see the moment your customer pays." },
+    { "id": "bank", "text": "Nexus brings in your bank transactions and matches them to your invoices and bills. Reconciling becomes a quick check, not a lost weekend." },
+    { "id": "receipt", "text": "Snap a photo of a receipt. Nexus reads the supplier, the amount and the VAT, and files it for you." },
+    { "id": "vat", "text": "When your VAT period ends, the return is already worked out, and every figure links back to the invoice or receipt behind it." },
+    { "id": "dashboard", "text": "And one dashboard shows what matters most: cash in the bank, who owes you money, and what's due next." },
+    { "id": "cta", "text": "Nexus Accounting. Less admin, more business. Start your free trial today." }
+  ]
+}
